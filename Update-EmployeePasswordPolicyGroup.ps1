@@ -26,6 +26,8 @@ Import-PSSession -Session $adSession -Module ActiveDirectory -CommandName $adCmd
 # Imported Functions
 . .\lib\Add-Log.ps1
 
+Add-Log info 'begin checking group membership'
+$groupSams = (Get-ADGroupMember -Identity 'Employee-Password-Policy').SamAccountName
 $aDParams = @{ 
  Filter     = {
   (mail -like "*@*") -and
@@ -35,16 +37,15 @@ $aDParams = @{
  Properties = 'employeeId'
 }
 $staffSams = (Get-Aduser @aDParams | Where-Object { $_.employeeId -match "\d{4,}" }).samAccountName
-$groupSams = (Get-ADGroupMember -Identity 'Employee-Password-Policy').SamAccountName
-
-$missingSams = (Compare-Object -ReferenceObject $groupSams -DifferenceObject $staffSams).InputObject
+# if $staffSams has an entry that is missing from $groupsSams then add that entry to the group.
+$missingSams = Compare-Object -ReferenceObject $groupSams -DifferenceObject $staffSams | Where-Object { $_.SideIndicator -eq '=>' }
 if ($missingSams) {
- Add-Log info 'Missing user objects:' $WhatIf
- $missingSams
- Add-Log add 'Adding user objects to Employee-Password-Policy group'
- Add-ADGroupMember -Identity 'Employee-Password-Policy' -Members $missingSams -WhatIf:$WhatIf
+ foreach ($item in $missingSams) {
+  Add-Log add $item.InputObject $WhatIf
+  Add-ADGroupMember -Identity 'Employee-Password-Policy' -Members $item.InputObject -WhatIf:$WhatIf
+ }
 }
-else { Add-Log info 'Employee-Password-Policy security group has no missing user objects' $WhatIf }
+else { Add-Log info 'Employee-Password-Policy security group has no missing user objects' }
 
 Add-Log script 'Tearing down sessions...'
 Get-PSSession | Remove-PSSession
