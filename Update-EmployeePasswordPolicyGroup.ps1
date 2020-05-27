@@ -21,7 +21,7 @@ param (
 
 $adCmdLets = 'Get-ADUser', 'Get-ADGroupMember', 'Add-ADGroupMember'
 $adSession = New-PSSession -ComputerName $DomainController -Credential $Credential
-Import-PSSession -Session $adSession -Module ActiveDirectory -CommandName $adCmdLets -AllowClobber > $null
+Import-PSSession -Session $adSession -Module ActiveDirectory -CommandName $adCmdLets -AllowClobber | Out-Null
 
 # Imported Functions
 . .\lib\Add-Log.ps1
@@ -46,6 +46,9 @@ if ($missingSams) {
  }
 }
 else { Add-Log info 'Employee-Password-Policy security group has no missing user objects' }
+
+$groupSams = (Get-ADGroupMember -Identity 'Employee-Password-Policy').SamAccountName
+'Total Group Members : {0}' -f $groupSams.count
 
 Add-Log script 'Tearing down sessions...'
 Get-PSSession | Remove-PSSession
