@@ -48,7 +48,7 @@ if ($missingSams) {
 else { Add-Log info 'Employee-Password-Policy security group has no missing user objects' }
 
 $groupSams = (Get-ADGroupMember -Identity 'Employee-Password-Policy').SamAccountName
-'Total Group Members : {0}' -f $groupSams.count
+Add-Log info ('Total Group Members : {0}' -f $groupSams.count)
 
 Add-Log script 'Tearing down sessions...'
 Get-PSSession | Remove-PSSession
