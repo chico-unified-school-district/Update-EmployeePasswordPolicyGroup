@@ -1,4 +1,4 @@
-<# 
+<#
 .SYNOPSIS
 .DESCRIPTION
 .EXAMPLE
@@ -7,28 +7,35 @@
 .NOTES
 #>
 [cmdletbinding()]
-param ( 
- [Parameter(Position = 0, Mandatory = $True)]
- [ValidateScript( { Test-Connection -ComputerName $_ -Quiet -Count 1 })]
- [Alias('DC')]
- [string]$DomainController,
- [Parameter(Position = 1, Mandatory = $True)]
+param (
+ [Parameter(Mandatory = $True)]
+ [Alias('DCs')]
+ [string[]]$DomainControllers,
+ [Parameter(Mandatory = $True)]
  [Alias('ADCred')]
- [System.Management.Automation.PSCredential]$Credential,
- [Parameter(Position = 3, Mandatory = $false)]
+ [System.Management.Automation.PSCredential]$ADCredential,
+ [Parameter(Mandatory = $false)]
+ [Alias('wi')]
  [SWITCH]$WhatIf
 )
 
-$adCmdLets = 'Get-ADUser', 'Get-ADGroupMember', 'Add-ADGroupMember'
-$adSession = New-PSSession -ComputerName $DomainController -Credential $Credential
-Import-PSSession -Session $adSession -Module ActiveDirectory -CommandName $adCmdLets -AllowClobber | Out-Null
-
 # Imported Functions
 . .\lib\Add-Log.ps1
+. .\lib\Clear-SessionData.ps1
+. .\lib\New-ADSession.ps1
+. .\lib\Select-DomainController.ps1
+. .\lib\Show-TestRun.ps1
+
+Show-TestRun
+Clear-SessionData
+
+$dc = Select-DomainController $DomainControllers
+$adCmdLets = 'Get-ADUser', 'Get-ADGroupMember', 'Add-ADGroupMember'
 
 Add-Log info 'begin checking group membership'
+New-ADSession -dc $dc -cmdlets $adCmdLets -cred $ADCredential
 $groupSams = (Get-ADGroupMember -Identity 'Employee-Password-Policy').SamAccountName
-$aDParams = @{ 
+$aDParams = @{
  Filter     = {
   (mail -like "*@*") -and
   (employeeID -like "*")
@@ -50,5 +57,5 @@ else { Add-Log info 'Employee-Password-Policy security group has no missing user
 $groupSams = (Get-ADGroupMember -Identity 'Employee-Password-Policy').SamAccountName
 Add-Log info ('Total Group Members : {0}' -f $groupSams.count)
 
-Add-Log script 'Tearing down sessions...'
-Get-PSSession | Remove-PSSession
+Clear-SessionData
+Show-TestRun
