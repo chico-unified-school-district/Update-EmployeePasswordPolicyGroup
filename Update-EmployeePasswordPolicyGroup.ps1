@@ -14,7 +14,9 @@ param (
  [Parameter(Mandatory = $True)]
  [Alias('ADCred')]
  [System.Management.Automation.PSCredential]$ADCredential,
+ [string]$SearchBase,
  [Parameter(Mandatory = $false)]
+ [string]$Filter,
  [Alias('wi')]
  [SWITCH]$WhatIf
 )
@@ -40,12 +42,17 @@ $aDParams = @{
   (mail -like "*@*") -and
   (employeeID -like "*")
  }
- Searchbase = 'OU=Employees,OU=Users,OU=Domain_Root,DC=chico,DC=usd'
- Properties = 'employeeId'
+ Searchbase = $SearchBase
+ Properties = 'employeeId', 'Description', 'Title'
 }
-$staffSams = (Get-Aduser @aDParams | Where-Object { $_.employeeId -match "\d{4,}" }).samAccountName
+$staffSams = (Get-Aduser @aDParams |
+ Where-Object {
+  $_.employeeId -match "\d{4,}" -and
+  ($_.Description -notmatch $Filter -and $_.Title -notmatch $Filter)
+ }).samAccountName
 # if $staffSams has an entry that is missing from $groupsSams then add that entry to the group.
-$missingSams = Compare-Object -ReferenceObject $groupSams -DifferenceObject $staffSams | Where-Object { $_.SideIndicator -eq '=>' }
+$missingSams = Compare-Object -ReferenceObject $groupSams -DifferenceObject $staffSams |
+Where-Object { $_.SideIndicator -eq '=>' }
 if ($missingSams) {
  foreach ($item in $missingSams) {
   Add-Log add $item.InputObject $WhatIf
