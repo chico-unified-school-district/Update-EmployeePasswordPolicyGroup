@@ -36,7 +36,12 @@ $adCmdLets = 'Get-ADUser', 'Get-ADGroupMember', 'Add-ADGroupMember'
 
 Add-Log info 'begin checking group membership'
 New-ADSession -dc $dc -cmdlets $adCmdLets -cred $ADCredential
-$groupSams = (Get-ADGroupMember -Identity 'Employee-Password-Policy').SamAccountName
+
+$groupSams1 = (Get-ADGroupMember -Identity 'Employee-Password-Policy').SamAccountName
+$groupSams2 = (Get-ADGroupMember -Identity 'Employee-Password-Policy-Long-Term').SamAccountName
+
+$groupSams = ($groupSams1 + $groupSams2) | Sort-Object -Unique
+
 $aDParams = @{
  Filter     = {
   (mail -like "*@*") -and
