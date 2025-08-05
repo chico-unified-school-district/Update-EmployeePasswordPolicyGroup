@@ -15,59 +15,68 @@ param (
  [Alias('ADCred')]
  [System.Management.Automation.PSCredential]$ADCredential,
  [string]$SearchBase,
+ [Parameter(Mandatory = $True)]
+ [string[]]$Groups,
+ [Parameter(Mandatory = $True)]
+ [string]$TargetGroup,
  [Parameter(Mandatory = $false)]
  [string]$Filter,
  [Alias('wi')]
  [SWITCH]$WhatIf
 )
 
-# Imported Functions
-. .\lib\Add-Log.ps1
-. .\lib\Clear-SessionData.ps1
-. .\lib\New-ADSession.ps1
-. .\lib\Select-DomainController.ps1
-. .\lib\Show-TestRun.ps1
-
-Show-TestRun
-Clear-SessionData
-
-$dc = Select-DomainController $DomainControllers
-$adCmdLets = 'Get-ADUser', 'Get-ADGroupMember', 'Add-ADGroupMember'
-
-Add-Log info 'begin checking group membership'
-New-ADSession -dc $dc -cmdlets $adCmdLets -cred $ADCredential
-
-$groupSams1 = (Get-ADGroupMember -Identity 'Employee-Password-Policy').SamAccountName
-$groupSams2 = (Get-ADGroupMember -Identity 'Employee-Password-Policy-Long-Term').SamAccountName
-
-$groupSams = ($groupSams1 + $groupSams2) | Sort-Object -Unique
-
-$aDParams = @{
- Filter     = {
-  (mail -like "*@*") -and
-  (employeeID -like "*")
+function Add-ADPasswordGRoupMembers ($group) {
+ process {
+  Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.Name, $_) -F Blue
+  Add-ADGroupMember -Identity $group -Members $_ -WhatIf:$WhatIf
  }
- Searchbase = $SearchBase
- Properties = 'employeeId', 'Description', 'Title'
 }
-$staffSams = (Get-Aduser @aDParams |
- Where-Object {
-  $_.employeeId -match "\d{4,}" -and
-  ($_.Description -notmatch $Filter -and $_.Title -notmatch $Filter)
- }).samAccountName
-# if $staffSams has an entry that is missing from $groupsSams then add that entry to the group.
+
+function Get-ADGroupMemberSams {
+ begin {
+  $groupSams = @()
+ }
+ process {
+  $groupSams += (Get-ADGroupMember -Identity $_).SamAccountName
+ }
+ end {
+  $results = $groupSams | Sort-Object -Unique
+  Write-Host ('{0},Count: {1}' -f $MyInvocation.MyCommand.Name, @($results).count) -F Green
+  $results
+ }
+}
+
+function Get-ADStaffSams ($ou, $filter) {
+ $aDParams = @{
+  Filter     = "mail -like '*@*' -and employeeID -like '*'"
+  Searchbase = $ou
+  Properties = 'employeeId', 'Description', 'Title'
+ }
+ $results = (Get-Aduser @aDParams | Where-Object {
+   $_.employeeId -match "\d{4,}" -and
+   ($_.Description -notmatch $Filter -and $_.Title -notmatch $filter)
+  }).samAccountName
+
+ Write-Host ('{0},Count: {1}' -f $MyInvocation.MyCommand.Name, @($results).count) -F Green
+ $results
+}
+
+# ============================================================================================
+Import-Module -Name CommonScriptFunctions
+
+if ($WhatIf) { Show-TestRun }
+Show-BlockInfo main
+
+$cmdLets = 'Get-ADUser', 'Get-ADGroupMember', 'Add-ADGroupMember'
+Connect-ADSession -DomainControllers $DomainControllers -Cmdlets $cmdLets -Credential $ADCredential
+
+$groupSams = $Groups | Get-ADGroupMemberSams
+$staffSams = Get-ADStaffSams $SearchBase $Filter
+
 $missingSams = Compare-Object -ReferenceObject $groupSams -DifferenceObject $staffSams |
-Where-Object { $_.SideIndicator -eq '=>' }
-if ($missingSams) {
- foreach ($item in $missingSams) {
-  Add-Log add $item.InputObject $WhatIf
-  Add-ADGroupMember -Identity 'Employee-Password-Policy' -Members $item.InputObject -WhatIf:$WhatIf
- }
-}
-else { Add-Log info 'Employee-Password-Policy security group has no missing user objects' }
+ Where-Object { $_.SideIndicator -eq '=>' }
 
-$groupSams = (Get-ADGroupMember -Identity 'Employee-Password-Policy').SamAccountName
-Add-Log info ('Total Group Members : {0}' -f $groupSams.count)
+$missingSams.InputObject | Add-ADPasswordGRoupMembers $TargetGroup
 
-Clear-SessionData
-Show-TestRun
+Show-BlockInfo end
+if ($WhatIf) { Show-TestRun }
