@@ -27,7 +27,7 @@ param (
 
 function Add-ADPasswordGRoupMembers ($group) {
  process {
-  Write-Host ('{0},{1}' -f $MyInvocation.MyCommand.Name, $_) -F Blue
+  Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $group, $_) -F Blue
   Add-ADGroupMember -Identity $group -Members $_ -WhatIf:$WhatIf
  }
 }
@@ -52,8 +52,8 @@ function Get-ADStaffSams ($ou, $filter) {
   Searchbase = $ou
   Properties = 'employeeId', 'Description', 'Title'
  }
- $results = (Get-Aduser @aDParams | Where-Object {
-   $_.employeeId -match "\d{4,}" -and
+ $results = (Get-ADUser @aDParams | Where-Object {
+   $_.employeeId -match '\d{4,}' -and
    ($_.Description -notmatch $Filter -and $_.Title -notmatch $filter)
   }).samAccountName
 
@@ -65,6 +65,7 @@ function Get-ADStaffSams ($ou, $filter) {
 Import-Module -Name CommonScriptFunctions
 
 if ($WhatIf) { Show-TestRun }
+Clear-SessionData
 Show-BlockInfo main
 
 $cmdLets = 'Get-ADUser', 'Get-ADGroupMember', 'Add-ADGroupMember'
@@ -76,7 +77,7 @@ $staffSams = Get-ADStaffSams $SearchBase $Filter
 $missingSams = Compare-Object -ReferenceObject $groupSams -DifferenceObject $staffSams |
  Where-Object { $_.SideIndicator -eq '=>' }
 
-$missingSams.InputObject | Add-ADPasswordGRoupMembers $TargetGroup
+if ($missingSams) { $missingSams.InputObject | Add-ADPasswordGRoupMembers $TargetGroup }
 
 Show-BlockInfo end
 if ($WhatIf) { Show-TestRun }
