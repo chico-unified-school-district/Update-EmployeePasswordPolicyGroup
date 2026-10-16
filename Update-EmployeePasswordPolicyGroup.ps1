@@ -9,9 +9,6 @@
 [cmdletbinding()]
 param (
  [Parameter(Mandatory = $True)]
- [Alias('DCs')]
- [string[]]$DomainControllers,
- [Parameter(Mandatory = $True)]
  [Alias('ADCred')]
  [System.Management.Automation.PSCredential]$ADCredential,
  [string]$SearchBase,
@@ -25,19 +22,19 @@ param (
  [SWITCH]$WhatIf
 )
 
-function Add-ADPasswordGRoupMembers ($group) {
+function Add-ADPasswordGRoupMembers ($group, [pscredential]$cred) {
  process {
   Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $group, $_) -F Blue
-  Add-ADGroupMember -Identity $group -Members $_ -WhatIf:$WhatIf
+  Add-ADGroupMember -Identity $group -Members $_ -Credential $cred -WhatIf:$WhatIf
  }
 }
 
-function Get-ADGroupMemberSams {
+function Get-ADGroupMemberSams ([pscredential]$cred) {
  begin {
   $groupSams = @()
  }
  process {
-  $groupSams += (Get-ADGroupMember -Identity $_).SamAccountName
+  $groupSams += (Get-ADGroupMember -Identity $_ -Credential $cred).SamAccountName
  }
  end {
   $results = $groupSams | Sort-Object -Unique
@@ -46,11 +43,12 @@ function Get-ADGroupMemberSams {
  }
 }
 
-function Get-ADStaffSams ($ou, $filter) {
+function Get-ADStaffSams ($ou, $filter, [pscredential]$cred) {
  $aDParams = @{
   Filter     = "mail -like '*@*' -and employeeID -like '*'"
   Searchbase = $ou
   Properties = 'employeeId', 'Description', 'Title'
+  Credential = $cred
  }
  $results = (Get-ADUser @aDParams | Where-Object {
    $_.employeeId -match '\d{4,}' -and
@@ -63,21 +61,21 @@ function Get-ADStaffSams ($ou, $filter) {
 
 # ============================================================================================
 Import-Module -Name CommonScriptFunctions
+Import-Module -Name ActiveDirectory -Cmdlet Add-ADGroupMember, Get-ADGroupMember, Get-ADUser -WarningAction SilentlyContinue -ErrorAction Stop
 
 if ($WhatIf) { Show-TestRun }
-Clear-SessionData
 Show-BlockInfo main
 
-$cmdLets = 'Get-ADUser', 'Get-ADGroupMember', 'Add-ADGroupMember'
-Connect-ADSession -DomainControllers $DomainControllers -Cmdlets $cmdLets -Credential $ADCredential
-
-$groupSams = $Groups | Get-ADGroupMemberSams
-$staffSams = Get-ADStaffSams $SearchBase $Filter
+$groupSams = $Groups | Get-ADGroupMemberSams -cred $ADCredential
+$staffSams = Get-ADStaffSams -ou $SearchBase -filter $Filter -cred $ADCredential
 
 $missingSams = Compare-Object -ReferenceObject $groupSams -DifferenceObject $staffSams |
  Where-Object { $_.SideIndicator -eq '=>' }
 
-if ($missingSams) { $missingSams.InputObject | Add-ADPasswordGRoupMembers $TargetGroup }
+if ($missingSams) { $missingSams.InputObject | Add-ADPasswordGRoupMembers -group $TargetGroup -cred $ADCredential }
+
+$result = Get-ADGroupMember -Identity $TargetGroup -Credential $ADCredential
+Write-Host ('{0},Count: {1}' -f $MyInvocation.MyCommand.Name, @($result).count) -F Green
 
 Show-BlockInfo end
 if ($WhatIf) { Show-TestRun }
